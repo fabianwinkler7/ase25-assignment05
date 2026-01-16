@@ -54,7 +54,7 @@ docker run -d -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:54
 Start application (data source configured via [`application.yaml`](application/src/main/resources/application.yaml)):
 ```shell
 cd application
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+mvn spring-boot:run  "-Dspring-boot.run.profiles=dev"
 ```
 
 ### Docker

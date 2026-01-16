@@ -3,61 +3,62 @@ package de.unibayreuth.se.taskboard.api.mapper;
 import de.unibayreuth.se.taskboard.api.dtos.TaskDto;
 import de.unibayreuth.se.taskboard.api.dtos.UserDto;
 import de.unibayreuth.se.taskboard.business.domain.Task;
-import lombok.NoArgsConstructor;
+import de.unibayreuth.se.taskboard.business.exceptions.UserNotFoundException;
+import de.unibayreuth.se.taskboard.business.ports.UserService;
+import org.mapstruct.Context;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.UUID;
 
 @Mapper(componentModel = "spring")
-@ConditionalOnMissingBean // prevent IntelliJ warning about duplicate beans
-@NoArgsConstructor
 public abstract class TaskDtoMapper {
-    //TODO: Fix this mapper after resolving the other TODOs.
 
-//    @Autowired
-//    private UserService userService;
     @Autowired
-    private UserDtoMapper userDtoMapper;
+    protected UserService userService;
 
-    protected boolean utcNowUpdated = false;
-    protected LocalDateTime utcNow;
+    @Autowired
+    protected UserDtoMapper userDtoMapper;
 
-    //@Mapping(target = "assignee", expression = "java(getUserById(source.getAssigneeId()))")
-    @Mapping(target = "assignee", ignore = true)
+    // ---------- Public API (wie bisher nutzbar) ----------
+    public Task toBusiness(TaskDto source) {
+        return toBusiness(source, new TimestampContext());
+    }
+
+    // ---------- MapStruct Mappings ----------
+
+    // Domain -> DTO: assigneeId -> assignee(UserDto)
+    @Mapping(target = "assignee", expression = "java(mapAssignee(source.getAssigneeId()))")
     public abstract TaskDto fromBusiness(Task source);
 
-    //@Mapping(target = "assigneeId", source = "assignee.id")
-    @Mapping(target = "assigneeId", ignore = true)
+    // DTO -> Domain: assignee.id -> assigneeId
+    @Mapping(target = "assigneeId", source = "assignee.id")
     @Mapping(target = "status", source = "status", defaultValue = "TODO")
-    @Mapping(target = "createdAt", expression = "java(mapTimestamp(source.getCreatedAt()))")
-    @Mapping(target = "updatedAt", expression = "java(mapTimestamp(source.getUpdatedAt()))")
-    public abstract Task toBusiness(TaskDto source);
+    @Mapping(target = "createdAt", expression = "java(mapTimestamp(source.getCreatedAt(), ctx))")
+    @Mapping(target = "updatedAt", expression = "java(mapTimestamp(source.getUpdatedAt(), ctx))")
+    protected abstract Task toBusiness(TaskDto source, @Context TimestampContext ctx);
 
-    protected UserDto getUserById(UUID userId) {
-//        if (userId == null) {
-//            return null;
-//        }
-//        return userService.getById(userId).map(userDtoMapper::fromBusiness).orElse(null);
-        return null;
+    // ---------- Helper ----------
+
+    protected UserDto mapAssignee(UUID userId) {
+        if (userId == null) return null;
+
+        try {
+            return userDtoMapper.fromBusiness(userService.getById(userId));
+        } catch (UserNotFoundException e) {
+            // je nach gewünschtem Verhalten: null oder Exception weiterwerfen
+            return null;
+        }
     }
 
-    protected LocalDateTime mapTimestamp (LocalDateTime timestamp) {
-        if (timestamp == null) {
-            // ensure that createdAt and updatedAt use exactly the same timestamp
-            if (!utcNowUpdated) {
-                utcNow = LocalDateTime.now(ZoneId.of("UTC"));
-                utcNowUpdated = true;
-            } else {
-                utcNowUpdated = false;
-            }
-            return utcNow;
-        }
-        return timestamp;
+    protected LocalDateTime mapTimestamp(LocalDateTime timestamp, @Context TimestampContext ctx) {
+        return (timestamp != null) ? timestamp : ctx.nowUtc;
+    }
+
+    public static class TimestampContext {
+        final LocalDateTime nowUtc = LocalDateTime.now(ZoneId.of("UTC"));
     }
 }
-
